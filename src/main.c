@@ -34,6 +34,8 @@ typedef struct {
     VkPhysicalDevice physical_device;
     VkDevice device;
     VkQueue graphics_queue;
+    VkSurfaceKHR surface;
+    VkQueue present_queue;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -214,11 +216,13 @@ static void setup_debug_messenger(void)
 typedef struct {
     uint32_t graphics_family;
     bool has_graphics_family;
+    uint32_t present_family;
+    bool has_present_family;
 } queue_family_indices;
 
 static bool is_queue_family_indices_complete(queue_family_indices qfi)
 {
-    return qfi.has_graphics_family;
+    return qfi.has_graphics_family && qfi.has_present_family;
 }
 
 static queue_family_indices find_queue_families(VkPhysicalDevice device)
@@ -232,9 +236,15 @@ static queue_family_indices find_queue_families(VkPhysicalDevice device)
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families);
 
     for (uint32_t i = 0; i < queue_family_count; i++) {
+        VkBool32 present_support = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, CTX.surface, &present_support);
         if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphics_family = i;
             indices.has_graphics_family = true;
+        }
+        if (present_support) {
+            indices.present_family = i;
+            indices.has_present_family = true;
         }
         if (is_queue_family_indices_complete(indices))
             break;
@@ -277,20 +287,27 @@ static void pick_physical_device(void)
 static void create_logical_device(void)
 {
     queue_family_indices indices = find_queue_families(CTX.physical_device);
-
-    VkDeviceQueueCreateInfo queue_create_info = { 0 };
-    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info.queueFamilyIndex = indices.graphics_family;
-    queue_create_info.queueCount = 1;
     float queue_priority = 1.0;
-    queue_create_info.pQueuePriorities = &queue_priority;
+
+    VkDeviceQueueCreateInfo queue_create_infos[2] = { 0 };
+    queue_create_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_create_infos[0].queueFamilyIndex = indices.graphics_family;
+    queue_create_infos[0].queueCount = 1;
+    queue_create_infos[0].pQueuePriorities = &queue_priority;
+    bool is_same_queue = indices.present_family == indices.graphics_family;
+    if (!is_same_queue) {
+        queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_infos[1].queueFamilyIndex = indices.present_family;
+        queue_create_infos[1].queueCount = 1;
+        queue_create_infos[1].pQueuePriorities = &queue_priority;
+    }
 
     VkPhysicalDeviceFeatures device_features = { 0 };
 
     VkDeviceCreateInfo create_info = { 0 };
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    create_info.pQueueCreateInfos = &queue_create_info;
-    create_info.queueCreateInfoCount = 1;
+    create_info.pQueueCreateInfos = queue_create_infos;
+    create_info.queueCreateInfoCount = is_same_queue ? 1 : 2;
     create_info.pEnabledFeatures = &device_features;
     create_info.enabledExtensionCount = 0;
     if (ENABLE_VALIDATION_LAYERS) {
@@ -303,12 +320,20 @@ static void create_logical_device(void)
     VkResult result = vkCreateDevice(CTX.physical_device, &create_info, NULL, &CTX.device);
     assert(result == VK_SUCCESS);
     vkGetDeviceQueue(CTX.device, indices.graphics_family, 0, &CTX.graphics_queue);
+    vkGetDeviceQueue(CTX.device, indices.present_family, 0, &CTX.present_queue);
+}
+
+static void create_surface(void)
+{
+    VkResult result = glfwCreateWindowSurface(CTX.instance, CTX.window, NULL, &CTX.surface);
+    assert(result == VK_SUCCESS);
 }
 
 static void init_vulkan(void)
 {
     create_instance();
     setup_debug_messenger();
+    create_surface();
     pick_physical_device();
     create_logical_device();
 }
@@ -326,6 +351,7 @@ static void cleanup(void)
     if (ENABLE_VALIDATION_LAYERS) {
         vk_destroy_debug_utils_messenger_ext(CTX.instance, CTX.debug_messenger, NULL);
     }
+    vkDestroySurfaceKHR(CTX.instance, CTX.surface, NULL);
     vkDestroyInstance(CTX.instance, NULL);
 
     glfwDestroyWindow(CTX.window);
