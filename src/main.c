@@ -14,8 +14,8 @@
 #include "array_helper_macros.h"
 #include "log.h"
 
-static const uint32_t WIDTH = 800;
-static const uint32_t HEIGHT = 600;
+static const int WIDTH = 800;
+static const int HEIGHT = 600;
 
 static const char *const VALIDATION_LAYERS[] = {
     "VK_LAYER_KHRONOS_validation",
@@ -88,7 +88,7 @@ static const char **get_required_extensions(uint32_t *glfw_extension_count)
     const char **required_extensions = calloc(sizeof *required_extensions, *glfw_extension_count);
     assert(required_extensions);
 
-    for (size_t i = 0; i < ENABLE_VALIDATION_LAYERS ? *glfw_extension_count - 1 : *glfw_extension_count; i++)
+    for (size_t i = 0; i < (ENABLE_VALIDATION_LAYERS ? *glfw_extension_count - 1 : *glfw_extension_count); i++)
         required_extensions[i] = glfw_extensions[i];
 
     if (ENABLE_VALIDATION_LAYERS)
