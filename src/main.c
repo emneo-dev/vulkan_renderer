@@ -31,6 +31,9 @@ typedef struct {
     GLFWwindow *window;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debug_messenger;
+    VkPhysicalDevice physical_device;
+    VkDevice device;
+    VkQueue graphics_queue;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -72,8 +75,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
 void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT *create_info)
 {
     create_info->sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    create_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
-        | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    create_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+        | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     create_info->messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
         | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     create_info->pfnUserCallback = debug_callback;
@@ -208,10 +211,106 @@ static void setup_debug_messenger(void)
     assert(result == VK_SUCCESS);
 }
 
+typedef struct {
+    uint32_t graphics_family;
+    bool has_graphics_family;
+} queue_family_indices;
+
+static bool is_queue_family_indices_complete(queue_family_indices qfi)
+{
+    return qfi.has_graphics_family;
+}
+
+static queue_family_indices find_queue_families(VkPhysicalDevice device)
+{
+    queue_family_indices indices = { 0 };
+
+    uint32_t queue_family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, NULL);
+    VkQueueFamilyProperties *queue_families = calloc(sizeof *queue_families, queue_family_count);
+    assert(queue_families);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families);
+
+    for (uint32_t i = 0; i < queue_family_count; i++) {
+        if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            indices.graphics_family = i;
+            indices.has_graphics_family = true;
+        }
+        if (is_queue_family_indices_complete(indices))
+            break;
+    }
+
+    free(queue_families);
+    return indices;
+}
+
+static bool is_device_suitable(VkPhysicalDevice device)
+{
+    queue_family_indices indices = find_queue_families(device);
+
+    return is_queue_family_indices_complete(indices);
+}
+
+static void pick_physical_device(void)
+{
+    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+
+    uint32_t device_count = 0;
+    vkEnumeratePhysicalDevices(CTX.instance, &device_count, NULL);
+    assert(device_count != 0);
+
+    VkPhysicalDevice *devices = calloc(sizeof *devices, device_count);
+    vkEnumeratePhysicalDevices(CTX.instance, &device_count, devices);
+
+    for (uint32_t i = 0; i < device_count; i++) {
+        if (is_device_suitable(devices[i])) {
+            physical_device = devices[i];
+            break;
+        }
+    }
+
+    assert(physical_device != VK_NULL_HANDLE);
+    free(devices);
+    CTX.physical_device = physical_device;
+}
+
+static void create_logical_device(void)
+{
+    queue_family_indices indices = find_queue_families(CTX.physical_device);
+
+    VkDeviceQueueCreateInfo queue_create_info = { 0 };
+    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_create_info.queueFamilyIndex = indices.graphics_family;
+    queue_create_info.queueCount = 1;
+    float queue_priority = 1.0;
+    queue_create_info.pQueuePriorities = &queue_priority;
+
+    VkPhysicalDeviceFeatures device_features = { 0 };
+
+    VkDeviceCreateInfo create_info = { 0 };
+    create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    create_info.pQueueCreateInfos = &queue_create_info;
+    create_info.queueCreateInfoCount = 1;
+    create_info.pEnabledFeatures = &device_features;
+    create_info.enabledExtensionCount = 0;
+    if (ENABLE_VALIDATION_LAYERS) {
+        create_info.enabledLayerCount = LENGTH_OF(VALIDATION_LAYERS);
+        create_info.ppEnabledLayerNames = VALIDATION_LAYERS;
+    } else {
+        create_info.enabledLayerCount = 0;
+    }
+
+    VkResult result = vkCreateDevice(CTX.physical_device, &create_info, NULL, &CTX.device);
+    assert(result == VK_SUCCESS);
+    vkGetDeviceQueue(CTX.device, indices.graphics_family, 0, &CTX.graphics_queue);
+}
+
 static void init_vulkan(void)
 {
     create_instance();
     setup_debug_messenger();
+    pick_physical_device();
+    create_logical_device();
 }
 
 static void main_loop(void)
@@ -223,6 +322,7 @@ static void main_loop(void)
 
 static void cleanup(void)
 {
+    vkDestroyDevice(CTX.device, NULL);
     if (ENABLE_VALIDATION_LAYERS) {
         vk_destroy_debug_utils_messenger_ext(CTX.instance, CTX.debug_messenger, NULL);
     }
