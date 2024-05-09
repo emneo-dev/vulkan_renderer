@@ -15,6 +15,7 @@ INC_DIRS := $(SRC_DIRS)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CPPFLAGS := $(INC_FLAGS) -MMD -MP
+CPPFLAGS += -DLOG_USE_COLOR
 
 CFLAGS := -Wall
 CFLAGS += -Wextra

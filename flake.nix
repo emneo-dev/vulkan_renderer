@@ -51,9 +51,15 @@
             hyperfine
             valgrind
             clang-tools
+            python3Packages.compiledb
           ]
           ++ (pkgs.lib.optionals
             pkgs.stdenv.isLinux [linuxPackages_latest.perf]);
+
+        env = with pkgs; {
+          VULKAN_SDK = "${vulkan-headers}";
+          VK_LAYER_PATH = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
+        };
       };
 
       packages.default = pkgs.stdenv.mkDerivation {
@@ -79,6 +85,11 @@
           mkdir -p $out/bin
           install -D vulkan_renderer $out/bin/vulkan_renderer --mode 0755
         '';
+
+        env = with pkgs; {
+          VULKAN_SDK = "${vulkan-headers}";
+          VK_LAYER_PATH = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
+        };
       };
     });
 }
