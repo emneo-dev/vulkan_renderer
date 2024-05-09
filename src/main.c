@@ -50,6 +50,7 @@ typedef struct {
     VkExtent2D swap_chain_extent;
     VkImageView *swap_chain_image_views;
     uint32_t swap_chain_image_views_nb;
+    VkRenderPass render_pass;
     VkPipelineLayout pipeline_layout;
 } global_ctx;
 
@@ -679,6 +680,38 @@ static void create_graphics_pipeline(void)
     vkDestroyShaderModule(CTX.device, frag_shader_module, NULL);
 }
 
+static void create_render_pass(void)
+{
+    VkAttachmentDescription color_attachement = { 0 };
+    color_attachement.format = CTX.swap_chain_image_format;
+    color_attachement.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachement.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachement.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachement.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachement.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachement.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachement.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference color_attachment_ref = { 0 };
+    color_attachment_ref.attachment = 0;
+    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass = { 0 };
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color_attachment_ref;
+
+    VkRenderPassCreateInfo render_pass_info = { 0 };
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_info.attachmentCount = 1;
+    render_pass_info.pAttachments = &color_attachement;
+    render_pass_info.subpassCount = 1;
+    render_pass_info.pSubpasses = &subpass;
+
+    VkResult result = vkCreateRenderPass(CTX.device, &render_pass_info, NULL, &CTX.render_pass);
+    assert(result == VK_SUCCESS);
+}
+
 static void init_vulkan(void)
 {
     create_instance();
@@ -688,6 +721,7 @@ static void init_vulkan(void)
     create_logical_device();
     create_swap_chain();
     create_image_views();
+    create_render_pass();
     create_graphics_pipeline();
 }
 
@@ -701,6 +735,7 @@ static void main_loop(void)
 static void cleanup(void)
 {
     vkDestroyPipelineLayout(CTX.device, CTX.pipeline_layout, NULL);
+    vkDestroyRenderPass(CTX.device, CTX.render_pass, NULL);
     for (uint32_t i = 0; i < CTX.swap_chain_image_views_nb; i++)
         vkDestroyImageView(CTX.device, CTX.swap_chain_image_views[i], NULL);
     vkDestroySwapchainKHR(CTX.device, CTX.swap_chain, NULL);
