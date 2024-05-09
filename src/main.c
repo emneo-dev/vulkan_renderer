@@ -44,7 +44,7 @@ static void init_window(void)
     CTX.window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", NULL, NULL);
 }
 
-static bool check_validation_layer_support()
+static bool check_validation_layer_support(void)
 {
     uint32_t layer_count;
     vkEnumerateInstanceLayerProperties(&layer_count, NULL);
@@ -79,6 +79,24 @@ static bool check_validation_layer_support()
     return true;
 }
 
+static const char **get_required_extensions(uint32_t *glfw_extension_count)
+{
+    const char **glfw_extensions = glfwGetRequiredInstanceExtensions(glfw_extension_count);
+    if (ENABLE_VALIDATION_LAYERS)
+        *glfw_extension_count += 1;
+
+    const char **required_extensions = calloc(sizeof *required_extensions, *glfw_extension_count);
+    assert(required_extensions);
+
+    for (size_t i = 0; i < ENABLE_VALIDATION_LAYERS ? *glfw_extension_count - 1 : *glfw_extension_count; i++)
+        required_extensions[i] = glfw_extensions[i];
+
+    if (ENABLE_VALIDATION_LAYERS)
+        required_extensions[*glfw_extension_count - 1] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+
+    return required_extensions;
+}
+
 static void create_instance(void)
 {
     if (ENABLE_VALIDATION_LAYERS)
@@ -99,7 +117,7 @@ static void create_instance(void)
     create_info.pApplicationInfo = &app_info;
     uint32_t glfw_extension_count = 0;
     const char **glfw_extensions;
-    glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+    glfw_extensions = get_required_extensions(&glfw_extension_count);
     create_info.enabledExtensionCount = glfw_extension_count;
     create_info.ppEnabledExtensionNames = glfw_extensions;
     if (ENABLE_VALIDATION_LAYERS) {
@@ -114,6 +132,7 @@ static void create_instance(void)
     VkResult result = vkCreateInstance(&create_info, NULL, &CTX.instance);
     assert(result == VK_SUCCESS);
     log_trace("Created VkInstance");
+    free(glfw_extensions);
 }
 
 static void init_vulkan(void)

@@ -85,7 +85,7 @@ static void unlock(void)
     }
 }
 
-const char *log_level_string(int level)
+__attribute__((const)) const char *log_level_string(int level)
 {
     return level_strings[level];
 }

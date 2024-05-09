@@ -52,6 +52,7 @@
             valgrind
             clang-tools
             python3Packages.compiledb
+            gdb
           ]
           ++ (pkgs.lib.optionals
             pkgs.stdenv.isLinux [linuxPackages_latest.perf]);
