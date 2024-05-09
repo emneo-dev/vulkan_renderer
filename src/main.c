@@ -551,6 +551,11 @@ static void create_image_views(void)
     }
 }
 
+static void create_graphics_pipeline(void)
+{
+    //
+}
+
 static void init_vulkan(void)
 {
     create_instance();
@@ -560,6 +565,7 @@ static void init_vulkan(void)
     create_logical_device();
     create_swap_chain();
     create_image_views();
+    create_graphics_pipeline();
 }
 
 static void main_loop(void)
