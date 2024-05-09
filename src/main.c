@@ -1,7 +1,10 @@
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -47,6 +50,7 @@ typedef struct {
     VkExtent2D swap_chain_extent;
     VkImageView *swap_chain_image_views;
     uint32_t swap_chain_image_views_nb;
+    VkPipelineLayout pipeline_layout;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -551,9 +555,128 @@ static void create_image_views(void)
     }
 }
 
+static char *read_file(const char *filename, size_t *size)
+{
+    int fd = open(filename, O_RDONLY);
+    assert(fd > 0);
+
+    struct stat st;
+    stat(filename, &st);
+    *size = (size_t) st.st_size;
+
+    char *data = malloc(*size);
+    read(fd, data, *size);
+    close(fd);
+    return data;
+}
+
+static VkShaderModule create_shader_module(const char *code, size_t code_size)
+{
+    VkShaderModuleCreateInfo create_info = { 0 };
+    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    create_info.codeSize = code_size;
+    // Hope this doesn't crash for some alignement reason :/
+    create_info.pCode = (const uint32_t *) code;
+
+    VkShaderModule shader_module = { 0 };
+    VkResult result = vkCreateShaderModule(CTX.device, &create_info, NULL, &shader_module);
+    assert(result == VK_SUCCESS);
+    return shader_module;
+}
+
 static void create_graphics_pipeline(void)
 {
-    //
+    size_t vert_shader_code_size;
+    size_t frag_shader_code_size;
+    char *vert_shader_code = read_file("shaders/vert.spv", &vert_shader_code_size);
+    log_debug("Loaded vertex shader bytecode with size %lu", vert_shader_code_size);
+    char *frag_shader_code = read_file("shaders/frag.spv", &frag_shader_code_size);
+    log_debug("Loaded frament shader bytecode with size %lu", frag_shader_code_size);
+
+    VkShaderModule vert_shader_module = create_shader_module(vert_shader_code, vert_shader_code_size);
+    VkShaderModule frag_shader_module = create_shader_module(frag_shader_code, frag_shader_code_size);
+
+    VkPipelineShaderStageCreateInfo vert_shader_stage_info = { 0 };
+    vert_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vert_shader_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vert_shader_stage_info.module = vert_shader_module;
+    vert_shader_stage_info.pName = "main";
+
+    VkPipelineShaderStageCreateInfo frag_shader_stage_info = { 0 };
+    frag_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    frag_shader_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    frag_shader_stage_info.module = frag_shader_module;
+    frag_shader_stage_info.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shader_stages[] = {
+        vert_shader_stage_info,
+        frag_shader_stage_info,
+    };
+
+    VkPipelineVertexInputStateCreateInfo vertex_input_info = { 0 };
+    vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input_info.vertexBindingDescriptionCount = 0;
+    vertex_input_info.vertexAttributeDescriptionCount = 0;
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly = { 0 };
+    input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_assembly.primitiveRestartEnable = VK_FALSE;
+
+    VkViewport viewport = { 0 };
+    viewport.x = 0.0;
+    viewport.y = 0.0;
+    viewport.width = (float) CTX.swap_chain_extent.width;
+    viewport.height = (float) CTX.swap_chain_extent.height;
+    viewport.minDepth = 0.0;
+    viewport.maxDepth = 1.0;
+
+    VkRect2D scissor = { 0 };
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent = CTX.swap_chain_extent;
+
+    VkPipelineViewportStateCreateInfo viewport_state = { 0 };
+    viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport_state.viewportCount = 1;
+    viewport_state.pViewports = &viewport;
+    viewport_state.scissorCount = 1;
+    viewport_state.pScissors = &scissor;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer = { 0 };
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE;
+
+    VkPipelineMultisampleStateCreateInfo multisampling = { 0 };
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineColorBlendAttachmentState color_blend_attachement = { 0 };
+    color_blend_attachement.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+        | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    color_blend_attachement.blendEnable = VK_FALSE;
+
+    VkPipelineColorBlendStateCreateInfo color_blending = { 0 };
+    color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    color_blending.logicOpEnable = VK_FALSE;
+    color_blending.attachmentCount = 1;
+    color_blending.pAttachments = &color_blend_attachement;
+
+    VkPipelineLayoutCreateInfo pipeline_layout_info = { 0 };
+    pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+
+    VkResult result = vkCreatePipelineLayout(CTX.device, &pipeline_layout_info, NULL, &CTX.pipeline_layout);
+    assert(result == VK_SUCCESS);
+
+    vkDestroyShaderModule(CTX.device, vert_shader_module, NULL);
+    vkDestroyShaderModule(CTX.device, frag_shader_module, NULL);
 }
 
 static void init_vulkan(void)
@@ -577,6 +700,7 @@ static void main_loop(void)
 
 static void cleanup(void)
 {
+    vkDestroyPipelineLayout(CTX.device, CTX.pipeline_layout, NULL);
     for (uint32_t i = 0; i < CTX.swap_chain_image_views_nb; i++)
         vkDestroyImageView(CTX.device, CTX.swap_chain_image_views[i], NULL);
     vkDestroySwapchainKHR(CTX.device, CTX.swap_chain, NULL);
