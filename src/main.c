@@ -30,6 +30,7 @@ const bool ENABLE_VALIDATION_LAYERS = true;
 typedef struct {
     GLFWwindow *window;
     VkInstance instance;
+    VkDebugUtilsMessengerEXT debug_messenger;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -42,6 +43,41 @@ static void init_window(void)
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     CTX.window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", NULL, NULL);
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type,
+    const VkDebugUtilsMessengerCallbackDataEXT *callback_data, void *user_data
+)
+{
+    switch (message_severity) {
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+        log_trace("vl: %s", callback_data->pMessage);
+        break;
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+        log_info("vl: %s", callback_data->pMessage);
+        break;
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+        log_warn("vl: %s", callback_data->pMessage);
+        break;
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+        log_error("vl: %s", callback_data->pMessage);
+        break;
+    default:
+        break;
+    }
+    return VK_FALSE;
+}
+
+void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT *create_info)
+{
+    create_info->sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    create_info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+        | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    create_info->messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+        | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    create_info->pfnUserCallback = debug_callback;
+    create_info->pUserData = NULL;
 }
 
 static bool check_validation_layer_support(void)
@@ -120,9 +156,12 @@ static void create_instance(void)
     glfw_extensions = get_required_extensions(&glfw_extension_count);
     create_info.enabledExtensionCount = glfw_extension_count;
     create_info.ppEnabledExtensionNames = glfw_extensions;
+    VkDebugUtilsMessengerCreateInfoEXT debug_create_info = { 0 };
     if (ENABLE_VALIDATION_LAYERS) {
         create_info.enabledLayerCount = LENGTH_OF(VALIDATION_LAYERS);
         create_info.ppEnabledLayerNames = VALIDATION_LAYERS;
+        populate_debug_messenger_create_info(&debug_create_info);
+        create_info.pNext = &debug_create_info;
     } else {
         create_info.enabledLayerCount = 0;
     }
@@ -135,9 +174,44 @@ static void create_instance(void)
     free(glfw_extensions);
 }
 
+static VkResult vk_create_debug_utils_messenger_ext(
+    VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *p_create_info,
+    const VkAllocationCallbacks *p_allocator, VkDebugUtilsMessengerEXT *p_debug_messenger
+)
+{
+    PFN_vkCreateDebugUtilsMessengerEXT func = (PFN_vkCreateDebugUtilsMessengerEXT
+    ) vkGetInstanceProcAddr(CTX.instance, "vkCreateDebugUtilsMessengerEXT");
+    if (func != NULL)
+        return func(instance, p_create_info, p_allocator, p_debug_messenger);
+    return VK_ERROR_EXTENSION_NOT_PRESENT;
+}
+
+static void vk_destroy_debug_utils_messenger_ext(
+    VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger, const VkAllocationCallbacks *p_allocator
+)
+{
+    PFN_vkDestroyDebugUtilsMessengerEXT func = (PFN_vkDestroyDebugUtilsMessengerEXT
+    ) vkGetInstanceProcAddr(CTX.instance, "vkDestroyDebugUtilsMessengerEXT");
+    if (func != NULL)
+        return func(instance, debug_messenger, p_allocator);
+}
+
+static void setup_debug_messenger(void)
+{
+    if (!ENABLE_VALIDATION_LAYERS)
+        return;
+
+    VkDebugUtilsMessengerCreateInfoEXT create_info = { 0 };
+    populate_debug_messenger_create_info(&create_info);
+
+    VkResult result = vk_create_debug_utils_messenger_ext(CTX.instance, &create_info, NULL, &CTX.debug_messenger);
+    assert(result == VK_SUCCESS);
+}
+
 static void init_vulkan(void)
 {
     create_instance();
+    setup_debug_messenger();
 }
 
 static void main_loop(void)
@@ -149,6 +223,9 @@ static void main_loop(void)
 
 static void cleanup(void)
 {
+    if (ENABLE_VALIDATION_LAYERS) {
+        vk_destroy_debug_utils_messenger_ext(CTX.instance, CTX.debug_messenger, NULL);
+    }
     vkDestroyInstance(CTX.instance, NULL);
 
     glfwDestroyWindow(CTX.window);
