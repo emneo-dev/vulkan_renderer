@@ -21,6 +21,10 @@ static const char *const VALIDATION_LAYERS[] = {
     "VK_LAYER_KHRONOS_validation",
 };
 
+static const char *const DEVICE_EXTENSIONS[] = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
 #ifdef NDEBUG
 const bool ENABLE_VALIDATION_LAYERS = false;
 #else
@@ -36,6 +40,7 @@ typedef struct {
     VkQueue graphics_queue;
     VkSurfaceKHR surface;
     VkQueue present_queue;
+    VkSwapchainKHR swap_chain;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -254,11 +259,139 @@ static queue_family_indices find_queue_families(VkPhysicalDevice device)
     return indices;
 }
 
+static bool check_device_extension_support(VkPhysicalDevice device)
+{
+    uint32_t extensions_count;
+    vkEnumerateDeviceExtensionProperties(device, NULL, &extensions_count, NULL);
+
+    VkExtensionProperties *available_extensions = calloc(sizeof *available_extensions, extensions_count);
+    vkEnumerateDeviceExtensionProperties(device, NULL, &extensions_count, available_extensions);
+    log_trace("Found %u available device extensions", extensions_count);
+    for (size_t i = 0; i < extensions_count; i++) {
+        log_trace("device extension %lu: %s", i, available_extensions[i].extensionName);
+    }
+
+    for (size_t i = 0; i < LENGTH_OF(DEVICE_EXTENSIONS); i++) {
+        bool extension_found = false;
+        log_debug("Testing for device extension: %s", DEVICE_EXTENSIONS[i]);
+
+        for (size_t y = 0; y < extensions_count; y++) {
+            if (!strcmp(DEVICE_EXTENSIONS[i], available_extensions[y].extensionName)) {
+                log_debug("Found wanted device extension: %s", DEVICE_EXTENSIONS[i]);
+                extension_found = true;
+                break;
+            }
+        }
+
+        if (!extension_found) {
+            log_fatal("Did not find wanted device extension: %s", DEVICE_EXTENSIONS[i]);
+            free(available_extensions);
+            return false;
+        }
+    }
+
+    free(available_extensions);
+    return true;
+}
+
+typedef struct {
+    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceFormatKHR *formats;
+    uint32_t formats_nb;
+    VkPresentModeKHR *present_modes;
+    uint32_t present_modes_nb;
+} swap_chain_support_details;
+
+swap_chain_support_details query_swap_chain_support(VkPhysicalDevice device)
+{
+    swap_chain_support_details details = { 0 };
+
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, CTX.surface, &details.capabilities);
+
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, CTX.surface, &details.present_modes_nb, NULL);
+    if (details.present_modes_nb != 0) {
+        details.present_modes = calloc(sizeof *details.present_modes, details.present_modes_nb);
+        assert(details.present_modes);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(
+            device, CTX.surface, &details.present_modes_nb, details.present_modes
+        );
+    }
+
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, CTX.surface, &details.formats_nb, NULL);
+    if (details.formats_nb != 0) {
+        details.formats = calloc(sizeof *details.formats, details.formats_nb);
+        assert(details.formats);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, CTX.surface, &details.formats_nb, details.formats);
+    }
+
+    return details;
+}
+
+static VkSurfaceFormatKHR choose_swap_surface_format(
+    const VkSurfaceFormatKHR *available_formats, uint32_t nb_available_formats
+)
+{
+    for (uint32_t i = 0; i < nb_available_formats; i++) {
+        if (available_formats[i].format == VK_FORMAT_B8G8R8A8_SRGB
+            && available_formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return available_formats[i];
+        }
+    }
+    // If you get there you will have a bad time :3
+    return available_formats[0];
+}
+
+static VkPresentModeKHR choose_swap_present_mode(
+    const VkPresentModeKHR *available_present_modes, uint32_t nb_available_present_modes
+)
+{
+    for (uint32_t i = 0; i < nb_available_present_modes; i++) {
+        if (available_present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return available_present_modes[i];
+        }
+    }
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+static VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR *capabilities)
+{
+    if (capabilities->currentExtent.width != UINT32_MAX)
+        return capabilities->currentExtent;
+    int width;
+    int height;
+    glfwGetFramebufferSize(CTX.window, &width, &height);
+    VkExtent2D actual_extent = {
+        .width = (uint32_t) width,
+        .height = (uint32_t) height,
+    };
+
+    // TODO: Change this, this is fucking horrendous
+    actual_extent.width = actual_extent.width > capabilities->maxImageExtent.width ? capabilities->maxImageExtent.width
+                                                                                   : actual_extent.width;
+    actual_extent.width = actual_extent.width < capabilities->minImageExtent.width ? capabilities->minImageExtent.width
+                                                                                   : actual_extent.width;
+    actual_extent.height = actual_extent.height > capabilities->maxImageExtent.height
+        ? capabilities->maxImageExtent.height
+        : actual_extent.height;
+    actual_extent.height = actual_extent.height < capabilities->minImageExtent.height
+        ? capabilities->minImageExtent.height
+        : actual_extent.height;
+
+    return actual_extent;
+}
+
 static bool is_device_suitable(VkPhysicalDevice device)
 {
     queue_family_indices indices = find_queue_families(device);
 
-    return is_queue_family_indices_complete(indices);
+    bool extensions_supported = check_device_extension_support(device);
+    bool swap_chain_adequate = false;
+    if (extensions_supported) {
+        swap_chain_support_details swap_chain_support = query_swap_chain_support(device);
+        swap_chain_adequate = swap_chain_support.formats_nb != 0 && swap_chain_support.present_modes_nb != 0;
+    }
+
+    return is_queue_family_indices_complete(indices) && extensions_supported && swap_chain_adequate;
 }
 
 static void pick_physical_device(void)
@@ -309,13 +442,14 @@ static void create_logical_device(void)
     create_info.pQueueCreateInfos = queue_create_infos;
     create_info.queueCreateInfoCount = is_same_queue ? 1 : 2;
     create_info.pEnabledFeatures = &device_features;
-    create_info.enabledExtensionCount = 0;
     if (ENABLE_VALIDATION_LAYERS) {
         create_info.enabledLayerCount = LENGTH_OF(VALIDATION_LAYERS);
         create_info.ppEnabledLayerNames = VALIDATION_LAYERS;
     } else {
         create_info.enabledLayerCount = 0;
     }
+    create_info.enabledExtensionCount = LENGTH_OF(DEVICE_EXTENSIONS);
+    create_info.ppEnabledExtensionNames = DEVICE_EXTENSIONS;
 
     VkResult result = vkCreateDevice(CTX.physical_device, &create_info, NULL, &CTX.device);
     assert(result == VK_SUCCESS);
@@ -329,6 +463,53 @@ static void create_surface(void)
     assert(result == VK_SUCCESS);
 }
 
+static void create_swap_chain(void)
+{
+    swap_chain_support_details swap_chain_support = query_swap_chain_support(CTX.physical_device);
+
+    VkSurfaceFormatKHR surface_format = choose_swap_surface_format(
+        swap_chain_support.formats, swap_chain_support.formats_nb
+    );
+    VkPresentModeKHR present_mode = choose_swap_present_mode(
+        swap_chain_support.present_modes, swap_chain_support.present_modes_nb
+    );
+    VkExtent2D extent = choose_swap_extent(&swap_chain_support.capabilities);
+    uint32_t image_count = swap_chain_support.capabilities.minImageCount + 1;
+
+    if (swap_chain_support.capabilities.maxImageCount > 0
+        && image_count > swap_chain_support.capabilities.maxImageCount)
+        image_count = swap_chain_support.capabilities.maxImageCount;
+
+    VkSwapchainCreateInfoKHR create_info = { 0 };
+    create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    create_info.surface = CTX.surface;
+    create_info.minImageCount = image_count;
+    create_info.imageFormat = surface_format.format;
+    create_info.imageColorSpace = surface_format.colorSpace;
+    create_info.imageExtent = extent;
+    create_info.imageArrayLayers = 1;
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    queue_family_indices indices = find_queue_families(CTX.physical_device);
+    uint32_t idx[] = { indices.graphics_family, indices.present_family };
+    if (indices.graphics_family != indices.present_family) {
+        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = idx;
+    } else {
+        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    }
+
+    create_info.preTransform = swap_chain_support.capabilities.currentTransform;
+    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_info.presentMode = present_mode;
+    create_info.clipped = VK_TRUE;
+    create_info.oldSwapchain = VK_NULL_HANDLE;
+
+    VkResult result = vkCreateSwapchainKHR(CTX.device, &create_info, NULL, &CTX.swap_chain);
+    assert(result == VK_SUCCESS);
+}
+
 static void init_vulkan(void)
 {
     create_instance();
@@ -336,6 +517,7 @@ static void init_vulkan(void)
     create_surface();
     pick_physical_device();
     create_logical_device();
+    create_swap_chain();
 }
 
 static void main_loop(void)
@@ -347,6 +529,7 @@ static void main_loop(void)
 
 static void cleanup(void)
 {
+    vkDestroySwapchainKHR(CTX.device, CTX.swap_chain, NULL);
     vkDestroyDevice(CTX.device, NULL);
     if (ENABLE_VALIDATION_LAYERS) {
         vk_destroy_debug_utils_messenger_ext(CTX.instance, CTX.debug_messenger, NULL);
