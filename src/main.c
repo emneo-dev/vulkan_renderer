@@ -41,6 +41,12 @@ typedef struct {
     VkSurfaceKHR surface;
     VkQueue present_queue;
     VkSwapchainKHR swap_chain;
+    VkImage *swap_chain_images;
+    uint32_t swap_chain_images_nb;
+    VkFormat swap_chain_image_format;
+    VkExtent2D swap_chain_extent;
+    VkImageView *swap_chain_image_views;
+    uint32_t swap_chain_image_views_nb;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -508,6 +514,41 @@ static void create_swap_chain(void)
 
     VkResult result = vkCreateSwapchainKHR(CTX.device, &create_info, NULL, &CTX.swap_chain);
     assert(result == VK_SUCCESS);
+
+    vkGetSwapchainImagesKHR(CTX.device, CTX.swap_chain, &CTX.swap_chain_images_nb, NULL);
+    CTX.swap_chain_images = calloc(sizeof *CTX.swap_chain_images, CTX.swap_chain_images_nb);
+    assert(CTX.swap_chain_images);
+    vkGetSwapchainImagesKHR(CTX.device, CTX.swap_chain, &CTX.swap_chain_images_nb, CTX.swap_chain_images);
+
+    CTX.swap_chain_image_format = surface_format.format;
+    CTX.swap_chain_extent = extent;
+}
+
+static void create_image_views(void)
+{
+    CTX.swap_chain_image_views = calloc(sizeof *CTX.swap_chain_image_views, CTX.swap_chain_images_nb);
+    assert(CTX.swap_chain_image_views);
+    CTX.swap_chain_image_views_nb = CTX.swap_chain_images_nb;
+
+    for (uint32_t i = 0; i < CTX.swap_chain_image_views_nb; i++) {
+        VkImageViewCreateInfo create_info = { 0 };
+        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        create_info.image = CTX.swap_chain_images[i];
+        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        create_info.format = CTX.swap_chain_image_format;
+        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        create_info.subresourceRange.baseMipLevel = 0;
+        create_info.subresourceRange.levelCount = 1;
+        create_info.subresourceRange.baseArrayLayer = 0;
+        create_info.subresourceRange.layerCount = 1;
+
+        VkResult result = vkCreateImageView(CTX.device, &create_info, NULL, &CTX.swap_chain_image_views[i]);
+        assert(result == VK_SUCCESS);
+    }
 }
 
 static void init_vulkan(void)
@@ -518,6 +559,7 @@ static void init_vulkan(void)
     pick_physical_device();
     create_logical_device();
     create_swap_chain();
+    create_image_views();
 }
 
 static void main_loop(void)
@@ -529,11 +571,12 @@ static void main_loop(void)
 
 static void cleanup(void)
 {
+    for (uint32_t i = 0; i < CTX.swap_chain_image_views_nb; i++)
+        vkDestroyImageView(CTX.device, CTX.swap_chain_image_views[i], NULL);
     vkDestroySwapchainKHR(CTX.device, CTX.swap_chain, NULL);
     vkDestroyDevice(CTX.device, NULL);
-    if (ENABLE_VALIDATION_LAYERS) {
+    if (ENABLE_VALIDATION_LAYERS)
         vk_destroy_debug_utils_messenger_ext(CTX.instance, CTX.debug_messenger, NULL);
-    }
     vkDestroySurfaceKHR(CTX.instance, CTX.surface, NULL);
     vkDestroyInstance(CTX.instance, NULL);
 
