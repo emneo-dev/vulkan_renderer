@@ -52,6 +52,7 @@ typedef struct {
     uint32_t swap_chain_image_views_nb;
     VkRenderPass render_pass;
     VkPipelineLayout pipeline_layout;
+    VkPipeline graphics_pipeline;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -676,6 +677,24 @@ static void create_graphics_pipeline(void)
     VkResult result = vkCreatePipelineLayout(CTX.device, &pipeline_layout_info, NULL, &CTX.pipeline_layout);
     assert(result == VK_SUCCESS);
 
+    VkGraphicsPipelineCreateInfo pipeline_info = { 0 };
+    pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeline_info.stageCount = 2;
+    pipeline_info.pStages = shader_stages;
+    pipeline_info.pVertexInputState = &vertex_input_info;
+    pipeline_info.pInputAssemblyState = &input_assembly;
+    pipeline_info.pViewportState = &viewport_state;
+    pipeline_info.pRasterizationState = &rasterizer;
+    pipeline_info.pMultisampleState = &multisampling;
+    pipeline_info.pDepthStencilState = NULL;
+    pipeline_info.pColorBlendState = &color_blending;
+    pipeline_info.layout = CTX.pipeline_layout;
+    pipeline_info.renderPass = CTX.render_pass;
+    pipeline_info.subpass = 0;
+
+    result = vkCreateGraphicsPipelines(CTX.device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &CTX.graphics_pipeline);
+    assert(result == VK_SUCCESS);
+
     vkDestroyShaderModule(CTX.device, vert_shader_module, NULL);
     vkDestroyShaderModule(CTX.device, frag_shader_module, NULL);
 }
@@ -734,6 +753,7 @@ static void main_loop(void)
 
 static void cleanup(void)
 {
+    vkDestroyPipeline(CTX.device, CTX.graphics_pipeline, NULL);
     vkDestroyPipelineLayout(CTX.device, CTX.pipeline_layout, NULL);
     vkDestroyRenderPass(CTX.device, CTX.render_pass, NULL);
     for (uint32_t i = 0; i < CTX.swap_chain_image_views_nb; i++)
