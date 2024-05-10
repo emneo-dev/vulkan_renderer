@@ -1,6 +1,5 @@
 #define _XOPEN_SOURCE 600
 
-#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +34,16 @@ static const char *const DEVICE_EXTENSIONS[] = {
 const bool ENABLE_VALIDATION_LAYERS = false;
 #else
 const bool ENABLE_VALIDATION_LAYERS = true;
+#endif
+
+#ifdef NDEBUG
+#define ASSERT(x)         \
+    do {                  \
+        (void) sizeof(x); \
+    } while (0)
+#else
+#include <assert.h>
+#define ASSERT(x) assert(x)
 #endif
 
 typedef struct {
@@ -154,7 +163,7 @@ static const char **get_required_extensions(uint32_t *glfw_extension_count)
         *glfw_extension_count += 1;
 
     const char **required_extensions = calloc(sizeof *required_extensions, *glfw_extension_count);
-    assert(required_extensions);
+    ASSERT(required_extensions);
 
     for (size_t i = 0; i < (ENABLE_VALIDATION_LAYERS ? *glfw_extension_count - 1 : *glfw_extension_count); i++)
         required_extensions[i] = glfw_extensions[i];
@@ -168,7 +177,7 @@ static const char **get_required_extensions(uint32_t *glfw_extension_count)
 static void create_instance(void)
 {
     if (ENABLE_VALIDATION_LAYERS)
-        assert(check_validation_layer_support());
+        ASSERT(check_validation_layer_support());
 
     VkApplicationInfo app_info = { 0 };
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -201,7 +210,7 @@ static void create_instance(void)
 
     log_trace("Creating VkInstance");
     VkResult result = vkCreateInstance(&create_info, NULL, &CTX.instance);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
     log_trace("Created VkInstance");
     free(glfw_extensions);
 }
@@ -237,7 +246,7 @@ static void setup_debug_messenger(void)
     populate_debug_messenger_create_info(&create_info);
 
     VkResult result = vk_create_debug_utils_messenger_ext(CTX.instance, &create_info, NULL, &CTX.debug_messenger);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 }
 
 typedef struct {
@@ -259,7 +268,7 @@ static queue_family_indices find_queue_families(VkPhysicalDevice device)
     uint32_t queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, NULL);
     VkQueueFamilyProperties *queue_families = calloc(sizeof *queue_families, queue_family_count);
-    assert(queue_families);
+    ASSERT(queue_families);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families);
 
     for (uint32_t i = 0; i < queue_family_count; i++) {
@@ -333,7 +342,7 @@ static swap_chain_support_details query_swap_chain_support(VkPhysicalDevice devi
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, CTX.surface, &details.present_modes_nb, NULL);
     if (details.present_modes_nb != 0) {
         details.present_modes = calloc(sizeof *details.present_modes, details.present_modes_nb);
-        assert(details.present_modes);
+        ASSERT(details.present_modes);
         vkGetPhysicalDeviceSurfacePresentModesKHR(
             device, CTX.surface, &details.present_modes_nb, details.present_modes
         );
@@ -342,7 +351,7 @@ static swap_chain_support_details query_swap_chain_support(VkPhysicalDevice devi
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, CTX.surface, &details.formats_nb, NULL);
     if (details.formats_nb != 0) {
         details.formats = calloc(sizeof *details.formats, details.formats_nb);
-        assert(details.formats);
+        ASSERT(details.formats);
         vkGetPhysicalDeviceSurfaceFormatsKHR(device, CTX.surface, &details.formats_nb, details.formats);
     }
 
@@ -431,7 +440,7 @@ static void pick_physical_device(void)
 
     uint32_t device_count = 0;
     vkEnumeratePhysicalDevices(CTX.instance, &device_count, NULL);
-    assert(device_count != 0);
+    ASSERT(device_count != 0);
 
     VkPhysicalDevice *devices = calloc(sizeof *devices, device_count);
     vkEnumeratePhysicalDevices(CTX.instance, &device_count, devices);
@@ -443,7 +452,7 @@ static void pick_physical_device(void)
         }
     }
 
-    assert(physical_device != VK_NULL_HANDLE);
+    ASSERT(physical_device != VK_NULL_HANDLE);
     free(devices);
     CTX.physical_device = physical_device;
 }
@@ -483,7 +492,7 @@ static void create_logical_device(void)
     create_info.ppEnabledExtensionNames = DEVICE_EXTENSIONS;
 
     VkResult result = vkCreateDevice(CTX.physical_device, &create_info, NULL, &CTX.device);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
     vkGetDeviceQueue(CTX.device, indices.graphics_family, 0, &CTX.graphics_queue);
     vkGetDeviceQueue(CTX.device, indices.present_family, 0, &CTX.present_queue);
 }
@@ -491,7 +500,7 @@ static void create_logical_device(void)
 static void create_surface(void)
 {
     VkResult result = glfwCreateWindowSurface(CTX.instance, CTX.window, NULL, &CTX.surface);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 }
 
 static void create_swap_chain(void)
@@ -538,13 +547,13 @@ static void create_swap_chain(void)
     create_info.oldSwapchain = VK_NULL_HANDLE;
 
     VkResult result = vkCreateSwapchainKHR(CTX.device, &create_info, NULL, &CTX.swap_chain);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 
     destroy_swap_chain_support_details(swap_chain_support);
 
     vkGetSwapchainImagesKHR(CTX.device, CTX.swap_chain, &CTX.swap_chain_images_nb, NULL);
     CTX.swap_chain_images = calloc(sizeof *CTX.swap_chain_images, CTX.swap_chain_images_nb);
-    assert(CTX.swap_chain_images);
+    ASSERT(CTX.swap_chain_images);
     vkGetSwapchainImagesKHR(CTX.device, CTX.swap_chain, &CTX.swap_chain_images_nb, CTX.swap_chain_images);
 
     CTX.swap_chain_image_format = surface_format.format;
@@ -554,7 +563,7 @@ static void create_swap_chain(void)
 static void create_image_views(void)
 {
     CTX.swap_chain_image_views = calloc(sizeof *CTX.swap_chain_image_views, CTX.swap_chain_images_nb);
-    assert(CTX.swap_chain_image_views);
+    ASSERT(CTX.swap_chain_image_views);
     CTX.swap_chain_image_views_nb = CTX.swap_chain_images_nb;
 
     for (uint32_t i = 0; i < CTX.swap_chain_image_views_nb; i++) {
@@ -574,14 +583,14 @@ static void create_image_views(void)
         create_info.subresourceRange.layerCount = 1;
 
         VkResult result = vkCreateImageView(CTX.device, &create_info, NULL, &CTX.swap_chain_image_views[i]);
-        assert(result == VK_SUCCESS);
+        ASSERT(result == VK_SUCCESS);
     }
 }
 
 static char *read_file(const char *filename, size_t *size)
 {
     int fd = open(filename, O_RDONLY);
-    assert(fd > 0);
+    ASSERT(fd > 0);
 
     struct stat st;
     stat(filename, &st);
@@ -603,7 +612,7 @@ static VkShaderModule create_shader_module(const char *code, size_t code_size)
 
     VkShaderModule shader_module = { 0 };
     VkResult result = vkCreateShaderModule(CTX.device, &create_info, NULL, &shader_module);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
     return shader_module;
 }
 
@@ -696,7 +705,7 @@ static void create_graphics_pipeline(void)
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 
     VkResult result = vkCreatePipelineLayout(CTX.device, &pipeline_layout_info, NULL, &CTX.pipeline_layout);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 
     VkGraphicsPipelineCreateInfo pipeline_info = { 0 };
     pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -714,7 +723,7 @@ static void create_graphics_pipeline(void)
     pipeline_info.subpass = 0;
 
     result = vkCreateGraphicsPipelines(CTX.device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &CTX.graphics_pipeline);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 
     vkDestroyShaderModule(CTX.device, vert_shader_module, NULL);
     vkDestroyShaderModule(CTX.device, frag_shader_module, NULL);
@@ -761,14 +770,14 @@ static void create_render_pass(void)
     render_pass_info.pDependencies = &dependency;
 
     VkResult result = vkCreateRenderPass(CTX.device, &render_pass_info, NULL, &CTX.render_pass);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 }
 
 static void create_framebuffers(void)
 {
     CTX.swap_chain_framebuffers_nb = CTX.swap_chain_images_nb;
     CTX.swap_chain_framebuffers = calloc(sizeof *CTX.swap_chain_framebuffers, CTX.swap_chain_framebuffers_nb);
-    assert(CTX.swap_chain_framebuffers);
+    ASSERT(CTX.swap_chain_framebuffers);
 
     for (uint32_t i = 0; i < CTX.swap_chain_framebuffers_nb; i++) {
         VkImageView attachments[] = {
@@ -785,7 +794,7 @@ static void create_framebuffers(void)
         framebuffer_info.layers = 1;
 
         VkResult result = vkCreateFramebuffer(CTX.device, &framebuffer_info, NULL, &CTX.swap_chain_framebuffers[i]);
-        assert(result == VK_SUCCESS);
+        ASSERT(result == VK_SUCCESS);
     }
 }
 
@@ -799,7 +808,7 @@ static void create_command_pool(void)
     pool_info.queueFamilyIndex = qfi.graphics_family;
 
     VkResult result = vkCreateCommandPool(CTX.device, &pool_info, NULL, &CTX.command_pool);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 }
 
 static void create_command_buffer(void)
@@ -811,7 +820,7 @@ static void create_command_buffer(void)
     alloc_info.commandBufferCount = 1;
 
     VkResult result = vkAllocateCommandBuffers(CTX.device, &alloc_info, &CTX.command_buffer);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 }
 
 static void record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index)
@@ -820,7 +829,7 @@ static void record_command_buffer(VkCommandBuffer command_buffer, uint32_t image
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
     VkResult result = vkBeginCommandBuffer(command_buffer, &begin_info);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 
     VkRenderPassBeginInfo render_pass_info = { 0 };
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -845,7 +854,7 @@ static void record_command_buffer(VkCommandBuffer command_buffer, uint32_t image
     // =========== END RENDER PASS ===========
 
     result = vkEndCommandBuffer(command_buffer);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 }
 
 static void create_sync_objects(void)
@@ -859,11 +868,11 @@ static void create_sync_objects(void)
 
     VkResult result;
     result = vkCreateSemaphore(CTX.device, &semaphore_info, NULL, &CTX.image_available_semaphore);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
     result = vkCreateSemaphore(CTX.device, &semaphore_info, NULL, &CTX.render_finished_semaphore);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
     result = vkCreateFence(CTX.device, &fence_info, NULL, &CTX.in_flight_fence);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 }
 
 static void init_vulkan(void)
@@ -929,7 +938,7 @@ static void draw_frame(void)
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
     VkResult result = vkQueueSubmit(CTX.graphics_queue, 1, &submit_info, CTX.in_flight_fence);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 
     VkPresentInfoKHR present_info = { 0 };
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -942,7 +951,7 @@ static void draw_frame(void)
     present_info.pSwapchains = swap_chains;
     present_info.pImageIndices = &image_index;
     result = vkQueuePresentKHR(CTX.present_queue, &present_info);
-    assert(result == VK_SUCCESS);
+    ASSERT(result == VK_SUCCESS);
 }
 
 static void main_loop(void)
