@@ -25,9 +25,8 @@ CFLAGS += -Wp,-U_FORTIFY_SOURCE
 CFLAGS += -Wformat=2
 CFLAGS += -MMD -MP
 CFLAGS += -fanalyzer
-CFLAGS += -fno-builtin
 CFLAGS += -pipe
-CFLAGS += -O2 -march=native -mtune=native
+CFLAGS += -march=native -mtune=native
 CFLAGS += -Wcast-qual
 CFLAGS += -Wconversion
 CFLAGS += -Wdisabled-optimization
@@ -50,7 +49,10 @@ CFLAGS += -Wno-missing-field-initializers
 LDFLAGS	:= -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 
 ifeq ($(DEBUG), 1)
-	CFLAGS	+=	-ggdb
+	CFLAGS	+=	-O0 -ggdb
+else
+	CFLAGS	+=	-O3
+	LDFLAGS	+=	-s
 endif
 
 ifeq ($(ASAN), 1)
