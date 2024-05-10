@@ -53,6 +53,8 @@ typedef struct {
     VkRenderPass render_pass;
     VkPipelineLayout pipeline_layout;
     VkPipeline graphics_pipeline;
+    VkFramebuffer *swap_chain_framebuffers;
+    uint32_t swap_chain_framebuffers_nb;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -731,6 +733,31 @@ static void create_render_pass(void)
     assert(result == VK_SUCCESS);
 }
 
+static void create_framebuffers(void)
+{
+    CTX.swap_chain_framebuffers_nb = CTX.swap_chain_images_nb;
+    CTX.swap_chain_framebuffers = calloc(sizeof *CTX.swap_chain_framebuffers, CTX.swap_chain_framebuffers_nb);
+    assert(CTX.swap_chain_framebuffers);
+
+    for (uint32_t i = 0; i < CTX.swap_chain_framebuffers_nb; i++) {
+        VkImageView attachments[] = {
+            CTX.swap_chain_image_views[i],
+        };
+
+        VkFramebufferCreateInfo framebuffer_info = { 0 };
+        framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_info.renderPass = CTX.render_pass;
+        framebuffer_info.attachmentCount = 1;
+        framebuffer_info.pAttachments = attachments;
+        framebuffer_info.width = CTX.swap_chain_extent.width;
+        framebuffer_info.height = CTX.swap_chain_extent.height;
+        framebuffer_info.layers = 1;
+
+        VkResult result = vkCreateFramebuffer(CTX.device, &framebuffer_info, NULL, &CTX.swap_chain_framebuffers[i]);
+        assert(result == VK_SUCCESS);
+    }
+}
+
 static void init_vulkan(void)
 {
     create_instance();
@@ -742,6 +769,7 @@ static void init_vulkan(void)
     create_image_views();
     create_render_pass();
     create_graphics_pipeline();
+    create_framebuffers();
 }
 
 static void main_loop(void)
@@ -753,6 +781,8 @@ static void main_loop(void)
 
 static void cleanup(void)
 {
+    for (uint32_t i = 0; i < CTX.swap_chain_framebuffers_nb; i++)
+        vkDestroyFramebuffer(CTX.device, CTX.swap_chain_framebuffers[i], NULL);
     vkDestroyPipeline(CTX.device, CTX.graphics_pipeline, NULL);
     vkDestroyPipelineLayout(CTX.device, CTX.pipeline_layout, NULL);
     vkDestroyRenderPass(CTX.device, CTX.render_pass, NULL);
