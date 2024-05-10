@@ -324,7 +324,7 @@ typedef struct {
     uint32_t present_modes_nb;
 } swap_chain_support_details;
 
-swap_chain_support_details query_swap_chain_support(VkPhysicalDevice device)
+static swap_chain_support_details query_swap_chain_support(VkPhysicalDevice device)
 {
     swap_chain_support_details details = { 0 };
 
@@ -347,6 +347,14 @@ swap_chain_support_details query_swap_chain_support(VkPhysicalDevice device)
     }
 
     return details;
+}
+
+static void destroy_swap_chain_support_details(swap_chain_support_details details)
+{
+    if (details.formats)
+        free(details.formats);
+    if (details.present_modes)
+        free(details.present_modes);
 }
 
 static VkSurfaceFormatKHR choose_swap_surface_format(
@@ -411,6 +419,7 @@ static bool is_device_suitable(VkPhysicalDevice device)
     if (extensions_supported) {
         swap_chain_support_details swap_chain_support = query_swap_chain_support(device);
         swap_chain_adequate = swap_chain_support.formats_nb != 0 && swap_chain_support.present_modes_nb != 0;
+        destroy_swap_chain_support_details(swap_chain_support);
     }
 
     return is_queue_family_indices_complete(indices) && extensions_supported && swap_chain_adequate;
@@ -530,6 +539,8 @@ static void create_swap_chain(void)
 
     VkResult result = vkCreateSwapchainKHR(CTX.device, &create_info, NULL, &CTX.swap_chain);
     assert(result == VK_SUCCESS);
+
+    destroy_swap_chain_support_details(swap_chain_support);
 
     vkGetSwapchainImagesKHR(CTX.device, CTX.swap_chain, &CTX.swap_chain_images_nb, NULL);
     CTX.swap_chain_images = calloc(sizeof *CTX.swap_chain_images, CTX.swap_chain_images_nb);
@@ -707,6 +718,8 @@ static void create_graphics_pipeline(void)
 
     vkDestroyShaderModule(CTX.device, vert_shader_module, NULL);
     vkDestroyShaderModule(CTX.device, frag_shader_module, NULL);
+    free(frag_shader_code);
+    free(vert_shader_code);
 }
 
 static void create_render_pass(void)

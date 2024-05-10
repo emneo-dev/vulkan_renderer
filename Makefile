@@ -47,11 +47,16 @@ CFLAGS += -Wunreachable-code
 CFLAGS += -Wwrite-strings
 CFLAGS += -Wno-missing-field-initializers
 
+LDFLAGS	:= -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
+
 ifeq ($(DEBUG), 1)
 	CFLAGS	+=	-ggdb
 endif
 
-LDFLAGS	:= -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
+ifeq ($(ASAN), 1)
+	CFLAGS	+=	-fsanitize=address,leak,undefined
+	LDFLAGS	+=	-lasan -lubsan -fsanitize=address,leak,undefined
+endif
 
 $(TARGET_EXEC): $(BUILD_DIR)/$(TARGET_EXEC)
 	cp $(BUILD_DIR)/$(TARGET_EXEC) $(TARGET_EXEC)
