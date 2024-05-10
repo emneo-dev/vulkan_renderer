@@ -51,8 +51,8 @@ LDFLAGS	:= -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 ifeq ($(DEBUG), 1)
 	CFLAGS	+=	-O0 -ggdb
 else
-	CFLAGS	+=	-O3
-	LDFLAGS	+=	-s
+	CFLAGS	+=	-O3 -flto
+	LDFLAGS	+=	-s -flto -O3
 endif
 
 ifeq ($(ASAN), 1)
