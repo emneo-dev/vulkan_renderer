@@ -801,6 +801,7 @@ static void cleanup(void)
 
 int main(void)
 {
+    log_set_level(LOG_DEBUG);
     init_window();
     init_vulkan();
     main_loop();
