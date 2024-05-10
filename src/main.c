@@ -783,11 +783,13 @@ static void cleanup(void)
 {
     for (uint32_t i = 0; i < CTX.swap_chain_framebuffers_nb; i++)
         vkDestroyFramebuffer(CTX.device, CTX.swap_chain_framebuffers[i], NULL);
+    free(CTX.swap_chain_framebuffers);
     vkDestroyPipeline(CTX.device, CTX.graphics_pipeline, NULL);
     vkDestroyPipelineLayout(CTX.device, CTX.pipeline_layout, NULL);
     vkDestroyRenderPass(CTX.device, CTX.render_pass, NULL);
     for (uint32_t i = 0; i < CTX.swap_chain_image_views_nb; i++)
         vkDestroyImageView(CTX.device, CTX.swap_chain_image_views[i], NULL);
+    free(CTX.swap_chain_image_views);
     vkDestroySwapchainKHR(CTX.device, CTX.swap_chain, NULL);
     vkDestroyDevice(CTX.device, NULL);
     if (ENABLE_VALIDATION_LAYERS)
