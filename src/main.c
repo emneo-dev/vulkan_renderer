@@ -901,6 +901,19 @@ static void draw_frame(void)
     submit_info.pSignalSemaphores = signal_semaphores;
     VkResult result = vkQueueSubmit(CTX.graphics_queue, 1, &submit_info, CTX.in_flight_fence);
     assert(result == VK_SUCCESS);
+
+    VkPresentInfoKHR present_info = { 0 };
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present_info.waitSemaphoreCount = 1;
+    present_info.pWaitSemaphores = signal_semaphores;
+    VkSwapchainKHR swap_chains[] = {
+        CTX.swap_chain,
+    };
+    present_info.swapchainCount = 1;
+    present_info.pSwapchains = swap_chains;
+    present_info.pImageIndices = &image_index;
+    result = vkQueuePresentKHR(CTX.present_queue, &present_info);
+    assert(result == VK_SUCCESS);
 }
 
 static void main_loop(void)
@@ -909,6 +922,8 @@ static void main_loop(void)
         glfwPollEvents();
         draw_frame();
     }
+
+    vkDeviceWaitIdle(CTX.device);
 }
 
 static void cleanup(void)
