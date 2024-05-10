@@ -55,6 +55,7 @@ typedef struct {
     VkPipeline graphics_pipeline;
     VkFramebuffer *swap_chain_framebuffers;
     uint32_t swap_chain_framebuffers_nb;
+    VkCommandPool command_pool;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -758,6 +759,19 @@ static void create_framebuffers(void)
     }
 }
 
+static void create_command_pool(void)
+{
+    queue_family_indices qfi = find_queue_families(CTX.physical_device);
+
+    VkCommandPoolCreateInfo pool_info = { 0 };
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pool_info.queueFamilyIndex = qfi.graphics_family;
+
+    VkResult result = vkCreateCommandPool(CTX.device, &pool_info, NULL, &CTX.command_pool);
+    assert(result == VK_SUCCESS);
+}
+
 static void init_vulkan(void)
 {
     create_instance();
@@ -770,6 +784,7 @@ static void init_vulkan(void)
     create_render_pass();
     create_graphics_pipeline();
     create_framebuffers();
+    create_command_pool();
 }
 
 static void main_loop(void)
@@ -781,6 +796,7 @@ static void main_loop(void)
 
 static void cleanup(void)
 {
+    vkDestroyCommandPool(CTX.device, CTX.command_pool, NULL);
     for (uint32_t i = 0; i < CTX.swap_chain_framebuffers_nb; i++)
         vkDestroyFramebuffer(CTX.device, CTX.swap_chain_framebuffers[i], NULL);
     free(CTX.swap_chain_framebuffers);
