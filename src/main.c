@@ -56,6 +56,7 @@ typedef struct {
     VkFramebuffer *swap_chain_framebuffers;
     uint32_t swap_chain_framebuffers_nb;
     VkCommandPool command_pool;
+    VkCommandBuffer command_buffer;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -772,6 +773,52 @@ static void create_command_pool(void)
     assert(result == VK_SUCCESS);
 }
 
+static void create_command_buffer(void)
+{
+    VkCommandBufferAllocateInfo alloc_info = { 0 };
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = CTX.command_pool;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = 1;
+
+    VkResult result = vkAllocateCommandBuffers(CTX.device, &alloc_info, &CTX.command_buffer);
+    assert(result == VK_SUCCESS);
+}
+
+static void record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index)
+{
+    VkCommandBufferBeginInfo begin_info = { 0 };
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+    VkResult result = vkBeginCommandBuffer(command_buffer, &begin_info);
+    assert(result == VK_SUCCESS);
+
+    VkRenderPassBeginInfo render_pass_info = { 0 };
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    render_pass_info.renderPass = CTX.render_pass;
+    render_pass_info.framebuffer = CTX.swap_chain_framebuffers[image_index];
+    render_pass_info.renderArea.offset = (VkOffset2D){ 0, 0 };
+    render_pass_info.renderArea.extent = CTX.swap_chain_extent;
+    // TODO: Find a better way to do this xd
+    VkClearValue clear_color;
+    clear_color.color.float32[0] = 0.0;
+    clear_color.color.float32[1] = 0.0;
+    clear_color.color.float32[2] = 0.0;
+    clear_color.color.float32[4] = 1.0;
+    render_pass_info.clearValueCount = 1;
+    render_pass_info.pClearValues = &clear_color;
+
+    // ========== BEGIN RENDER PASS ==========
+    vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, CTX.graphics_pipeline);
+    vkCmdDraw(command_buffer, 3, 1, 0, 0);
+    vkCmdEndRenderPass(command_buffer);
+    // =========== END RENDER PASS ===========
+
+    result = vkEndCommandBuffer(command_buffer);
+    assert(result == VK_SUCCESS);
+}
+
 static void init_vulkan(void)
 {
     create_instance();
@@ -785,6 +832,7 @@ static void init_vulkan(void)
     create_graphics_pipeline();
     create_framebuffers();
     create_command_pool();
+    create_command_buffer();
 }
 
 static void main_loop(void)
