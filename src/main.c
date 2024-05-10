@@ -57,6 +57,9 @@ typedef struct {
     uint32_t swap_chain_framebuffers_nb;
     VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
+    VkSemaphore image_available_semaphore;
+    VkSemaphore render_finished_semaphore;
+    VkFence in_flight_fence;
 } global_ctx;
 
 static global_ctx CTX = { 0 };
@@ -724,12 +727,22 @@ static void create_render_pass(void)
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &color_attachment_ref;
 
+    VkSubpassDependency dependency = { 0 };
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
     VkRenderPassCreateInfo render_pass_info = { 0 };
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_info.attachmentCount = 1;
     render_pass_info.pAttachments = &color_attachement;
     render_pass_info.subpassCount = 1;
     render_pass_info.pSubpasses = &subpass;
+    render_pass_info.dependencyCount = 1;
+    render_pass_info.pDependencies = &dependency;
 
     VkResult result = vkCreateRenderPass(CTX.device, &render_pass_info, NULL, &CTX.render_pass);
     assert(result == VK_SUCCESS);
@@ -804,7 +817,7 @@ static void record_command_buffer(VkCommandBuffer command_buffer, uint32_t image
     clear_color.color.float32[0] = 0.0;
     clear_color.color.float32[1] = 0.0;
     clear_color.color.float32[2] = 0.0;
-    clear_color.color.float32[4] = 1.0;
+    clear_color.color.float32[3] = 1.0;
     render_pass_info.clearValueCount = 1;
     render_pass_info.pClearValues = &clear_color;
 
@@ -816,6 +829,24 @@ static void record_command_buffer(VkCommandBuffer command_buffer, uint32_t image
     // =========== END RENDER PASS ===========
 
     result = vkEndCommandBuffer(command_buffer);
+    assert(result == VK_SUCCESS);
+}
+
+static void create_sync_objects(void)
+{
+    VkSemaphoreCreateInfo semaphore_info = { 0 };
+    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fence_info = { 0 };
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    VkResult result;
+    result = vkCreateSemaphore(CTX.device, &semaphore_info, NULL, &CTX.image_available_semaphore);
+    assert(result == VK_SUCCESS);
+    result = vkCreateSemaphore(CTX.device, &semaphore_info, NULL, &CTX.render_finished_semaphore);
+    assert(result == VK_SUCCESS);
+    result = vkCreateFence(CTX.device, &fence_info, NULL, &CTX.in_flight_fence);
     assert(result == VK_SUCCESS);
 }
 
@@ -833,17 +864,58 @@ static void init_vulkan(void)
     create_framebuffers();
     create_command_pool();
     create_command_buffer();
+    create_sync_objects();
+}
+
+static void draw_frame(void)
+{
+    // Wait for the previous frame to have been rendered
+    vkWaitForFences(CTX.device, 1, &CTX.in_flight_fence, VK_TRUE, UINT64_MAX);
+    vkResetFences(CTX.device, 1, &CTX.in_flight_fence);
+    // Now we are good to go
+
+    uint32_t image_index;
+    vkAcquireNextImageKHR(
+        CTX.device, CTX.swap_chain, UINT64_MAX, CTX.image_available_semaphore, VK_NULL_HANDLE, &image_index
+    );
+    vkResetCommandBuffer(CTX.command_buffer, 0);
+    record_command_buffer(CTX.command_buffer, image_index);
+
+    VkSubmitInfo submit_info = { 0 };
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    VkSemaphore wait_semaphores[] = {
+        CTX.image_available_semaphore,
+    };
+    VkPipelineStageFlags wait_stages[] = {
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+    };
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = wait_semaphores;
+    submit_info.pWaitDstStageMask = wait_stages;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &CTX.command_buffer;
+    VkSemaphore signal_semaphores[] = {
+        CTX.render_finished_semaphore,
+    };
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores;
+    VkResult result = vkQueueSubmit(CTX.graphics_queue, 1, &submit_info, CTX.in_flight_fence);
+    assert(result == VK_SUCCESS);
 }
 
 static void main_loop(void)
 {
     while (!glfwWindowShouldClose(CTX.window)) {
         glfwPollEvents();
+        draw_frame();
     }
 }
 
 static void cleanup(void)
 {
+    vkDestroySemaphore(CTX.device, CTX.image_available_semaphore, NULL);
+    vkDestroySemaphore(CTX.device, CTX.render_finished_semaphore, NULL);
+    vkDestroyFence(CTX.device, CTX.in_flight_fence, NULL);
     vkDestroyCommandPool(CTX.device, CTX.command_pool, NULL);
     for (uint32_t i = 0; i < CTX.swap_chain_framebuffers_nb; i++)
         vkDestroyFramebuffer(CTX.device, CTX.swap_chain_framebuffers[i], NULL);
