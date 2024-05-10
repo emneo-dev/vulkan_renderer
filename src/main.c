@@ -1,9 +1,12 @@
+#define _XOPEN_SOURCE 600
+
 #include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #define GLFW_INCLUDE_VULKAN
@@ -873,6 +876,19 @@ static void draw_frame(void)
     vkWaitForFences(CTX.device, 1, &CTX.in_flight_fence, VK_TRUE, UINT64_MAX);
     vkResetFences(CTX.device, 1, &CTX.in_flight_fence);
     // Now we are good to go
+    static struct timespec start = { 0 };
+    static size_t timer = 0;
+    const size_t frames_to_count = 1000;
+
+    if (timer++ > frames_to_count) {
+        timer = 0;
+        struct timespec tmp;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tmp);
+        size_t total_frame_times = (size_t) ((tmp.tv_sec - start.tv_sec) * 1000000
+                                             + (tmp.tv_nsec - start.tv_nsec) / 1000);
+        log_debug("Took %lu us", total_frame_times / frames_to_count);
+        start = tmp;
+    }
 
     uint32_t image_index;
     vkAcquireNextImageKHR(
